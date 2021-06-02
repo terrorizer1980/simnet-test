@@ -4,7 +4,7 @@ networks:
   vector:
 
 services:
-  #### ROUTER STACK 1
+  #### NODE STACK 1
   node1:
     container_name: node1
     image: connextproject/vector_node:$VECTOR_VERSION
@@ -44,7 +44,9 @@ services:
       driver: json-file
       options:
         max-size: 10m
-  #### END ROUTER STACK 2
+    networks:
+      - vector
+  #### END NODE STACK 2
 
   #### NODE STACK 2
   node2:
