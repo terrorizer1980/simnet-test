@@ -30,6 +30,8 @@ services:
     networks:
       - vector
   db-node1:
+    networks:
+      - vector
     container_name: db-node1
     image: connextproject/vector_database:$VECTOR_VERSION
     restart: always
