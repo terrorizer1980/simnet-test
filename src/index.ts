@@ -134,7 +134,7 @@ async function main(){
             expiry: "0",
         },
         recipient: dService.publicIdentifier,
-        recipientChainId: 4
+        recipientChainId: 5
     })
 
     console.log(transferRes)
