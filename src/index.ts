@@ -1,10 +1,10 @@
 import { utils, constants, providers, BigNumber, Wallet} from "ethers";
-import {RestServerNodeService} from "@connext/vector-utils";
+import {getRandomBytes32, RestServerNodeService} from "@connext/vector-utils";
 import {config} from "dotenv";
 import {resolve} from "path";
 
 import pino from 'pino';
-import {DEFAULT_CHANNEL_TIMEOUT} from "@connext/vector-types";
+import {DEFAULT_CHANNEL_TIMEOUT, TransferNames} from "@connext/vector-types";
 const logger = pino({ level: "debug" });
 
 const env = config({path:resolve("./docker/.env")})
@@ -54,47 +54,122 @@ async function main(){
         `${nodeUrlBase + carolPort}`,
         logger.child({ testName, name: "Carol" }),
         undefined,
-        1
+        0
     );
     const dService = await RestServerNodeService.connect(
         `${nodeUrlBase + davePort}`,
         logger.child({ testName, name: "Dave" }),
         undefined,
-        1
+        0
 
     )
 
-    console.log(cService,dService)
+    console.log(dService)
 
-    const cChannelExists = await cService.getStateChannelByParticipants({publicIdentifier: routerPublicIdentifier, counterparty:cService.publicIdentifier, chainId:chainId})
-    const dChannelExists = await dService.getStateChannelByParticipants({publicIdentifier: routerPublicIdentifier, counterparty:dService.publicIdentifier, chainId:chainId})
-
-    let cSetup;
-    let dSetup
-
-    //this can get the channel above cant hmm
-    // const chanbyaddy = await cService.getStateChannel({channelAddress:"0xeae9aF6363Fa5a199ff516F5527834F7670f56ca"})
-
-    //these return "Node not found"
-    console.log(dChannelExists,cChannelExists)
+    // const cSetup = await cService.setup({
+    //         counterpartyIdentifier: routerPublicIdentifier,
+    //         chainId,
+    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+    //     })
+    // console.log(cSetup)
 
 
-    if(!cChannelExists.getError()){
-        //create chan.
-        cSetup = await cService.setup({
-            counterpartyIdentifier: routerPublicIdentifier,
-            chainId,
-            timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
-        })
-    }else if(!dChannelExists.getError()){
-        dSetup = await cService.setup({
-            counterpartyIdentifier: routerPublicIdentifier,
-            chainId,
-            timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
-        })
+    // const dSetup = await dService.setup({
+    //         counterpartyIdentifier: routerPublicIdentifier,
+    //         chainId:5,
+    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+    //     })
+    // console.log(dSetup)
 
-    }
 
+    // const restore = await cService.restoreState({publicIdentifier:cService.publicIdentifier, counterpartyIdentifier:routerPublicIdentifier, chainId:chainId})
+    // console.log(restore)
+
+    // const drestore = await dService.restoreState({publicIdentifier:dService.publicIdentifier, counterpartyIdentifier:routerPublicIdentifier, chainId:5})
+    // console.log(drestore)
+
+
+    const cChannelExists = await cService.getStateChannelByParticipants({publicIdentifier: cService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
+    console.log(cChannelExists)
+    //
+    const dChannelExists = await dService.getStateChannelByParticipants({publicIdentifier: dService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
+    console.log(dChannelExists)
+    //
+    const depositAmt = utils.parseEther(".1");
+    const assetId = constants.AddressZero;
+
+    //
+    // const tx = await cService.sendDepositTx({
+    //     amount: depositAmt.toString(),
+    //     assetId,
+    //     chainId: 5,
+    //     channelAddress:  await restore.getValue().channelAddress,
+    //     publicIdentifier: cService.publicIdentifier,
+    // })
+
+
+    //******
+    // const tx = await dService.sendDepositTx({
+    //     amount: depositAmt.toString(),
+    //     assetId,
+    //     chainId: 5,
+    //     channelAddress:  await drestore.getValue()?.channelAddress,
+    //     publicIdentifier: dService.publicIdentifier,
+    // })
+    //
+    // console.log(tx)
+
+    const preImage = getRandomBytes32();
+    const lockHash = utils.soliditySha256(["bytes32"], [preImage]);
+
+    const taransferAmt = utils.parseEther(".05");
+
+    const transferRes = await cService.conditionalTransfer({
+        amount: taransferAmt.toString(),
+        assetId: assetId,
+        channelAddress: await cChannelExists.getValue()?.channelAddress || "",
+        type: TransferNames.HashlockTransfer,
+        details: {
+            lockHash,
+            expiry: "0",
+        },
+        recipient: dService.publicIdentifier,
+        recipientChainId: 4
+    })
+
+    console.log(transferRes)
+
+
+
+
+
+    // const dChannelExists = await dService.getStateChannelByParticipants({publicIdentifier: dService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
+    // let cSetup;
+    // let dSetup
+    //
+    // //this can get the channel above cant hmm
+    // // const chanbyaddy = await cService.getStateChannel({channelAddress:"0xeae9aF6363Fa5a199ff516F5527834F7670f56ca"})
+    //
+    // //these return "Node not found"
+    // console.log(JSON.stringify(dChannelExists),JSON.stringify(cChannelExists))
+    //
+    //
+    // if(!cChannelExists.getError()){
+    //     //create chan.
+    //     cSetup = await cService.setup({
+    //         counterpartyIdentifier: routerPublicIdentifier,
+    //         chainId,
+    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+    //     })
+    // }else if(!dChannelExists.getError()){
+    //     dSetup = await cService.setup({
+    //         counterpartyIdentifier: routerPublicIdentifier,
+    //         chainId,
+    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+    //     })
+    //
+    // }
+    //
 
 }
 main()
