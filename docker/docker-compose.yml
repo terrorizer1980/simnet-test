@@ -18,7 +18,7 @@ services:
       VECTOR_PG_PASSWORD: vector
       VECTOR_MNEMONIC: $MNEMONIC_1
     ports:
-      - 8001:8000
+      - 8003:8000
     volumes:
       - ./config.json:/app/config.json
     depends_on:
@@ -62,7 +62,7 @@ services:
       VECTOR_PG_PASSWORD: vector
       VECTOR_MNEMONIC: $MNEMONIC_2
     ports:
-      - 8002:8000
+      - 8004:8000
     volumes:
       - ./config.json:/app/config.json
     depends_on:
