@@ -10,13 +10,17 @@ const logger = pino({ level: "debug" });
 const env = config({path:resolve("./docker/.env")})
 
 //carol config
-const carolPort = "8001"
+const carolPort = "8069"
 const carolMnemonic = process.env.MNEMONIC_1 || undefined
 const carolWallet = Wallet.fromMnemonic(carolMnemonic!)
 
-const davePort = "8002"
+const davePort = "8070"
 const daveMnemonic = process.env.MNEMONIC_2 || undefined
 const daveWallet = Wallet.fromMnemonic(daveMnemonic!)
+
+
+const r1Port = "8001"
+const r2Port = "8002"
 
 const nodeUrlBase = "http://localhost:"
 const routerPublicIdentifier = "vector5ZCDdvFNyC8fB1uV1iontd4uj8kyrZqWNfifXXLviCfGLaD9Sr"
@@ -39,16 +43,10 @@ const hasBalance = async function(chainId:number, address:string, asset?:"ETH"){
     return undefined;
 }
 
+const testName = "simnet"
+const chainId = 5;
 
-async function main(){
-    const chainId = 5;
-    //check c bal
-
-    const c_bal = await hasBalance(chainId, carolWallet.address)
-    const d_bal = await hasBalance(chainId, daveWallet.address)
-    if(!d_bal || !c_bal) {return }
-
-    const testName = "simnet"
+async function connectSANodes(){
 
     const cService = await RestServerNodeService.connect(
         `${nodeUrlBase + carolPort}`,
@@ -57,29 +55,100 @@ async function main(){
         0
     );
     const dService = await RestServerNodeService.connect(
-        `${nodeUrlBase + davePort}`,
+        `${'http://localhost:' + davePort}`,
         logger.child({ testName, name: "Dave" }),
         undefined,
         0
-
     )
 
-    console.log(dService)
+    return([cService,dService]);
+}
 
-    // const cSetup = await cService.setup({
-    //         counterpartyIdentifier: routerPublicIdentifier,
-    //         chainId,
-    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
-    //     })
-    // console.log(cSetup)
+async function connectRouterNodes(){
+    const r1Service = await RestServerNodeService.connect(
+        `${nodeUrlBase + r1Port}`,
+        logger.child({ testName, name: "Router 1:" }),
+        undefined,
+        0
+    );
+    const r2Service = await RestServerNodeService.connect(
+        `${nodeUrlBase + r2Port}`,
+        logger.child({ testName, name: "Router 2:" }),
+        undefined,
+        0
+    );
 
+    return([r1Service,r2Service])
+}
 
-    // const dSetup = await dService.setup({
-    //         counterpartyIdentifier: routerPublicIdentifier,
-    //         chainId:5,
-    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
-    //     })
-    // console.log(dSetup)
+async function setupSANodesToRouter(saNodes:RestServerNodeService[], routerPID:string){
+
+    for (const node of saNodes) {
+        //check channel between node[] and routerPID
+        let channelExists = await node.getStateChannelByParticipants({publicIdentifier: node.publicIdentifier, counterparty:routerPID, chainId:chainId})
+        if(channelExists?.isError === true){
+            console.log(`Creating Channel`)
+            const chanSetup = await node.setup({
+                    counterpartyIdentifier: routerPID,
+                    chainId,
+                    timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+                })
+            if(chanSetup.getError()?.message){
+                console.log("Error creating channel")
+            }else{
+                console.log("Success creating channel")
+            }
+        }
+        channelExists = await node.getStateChannelByParticipants({publicIdentifier: node.publicIdentifier, counterparty:routerPID, chainId:chainId})
+        if(channelExists.getValue()){console.log(`Channel Exists Between ${node.publicIdentifier} and ${routerPID} \n at Channel Address: ${channelExists.getValue()?.channelAddress}`)}
+
+    }
+}
+async function basicDeposit(serviceFrom:RestServerNodeService, channel:string| undefined){
+    if(!channel){return}
+    console.log("Depositing")
+    const depositAmt = utils.parseEther(".1");
+    const assetId = constants.AddressZero;
+
+//why didnt this like my chainId at first defaulted to 4???
+    const depositTx = await serviceFrom.sendDepositTx({
+        amount: depositAmt.toString(),
+        assetId,
+        chainId: 5,
+        channelAddress:  channel,
+        publicIdentifier: serviceFrom.publicIdentifier,
+    })
+    console.log("Deposit TX Hash: ", depositTx)
+
+}
+
+async function main(){
+    //check c bal
+    const c_bal = await hasBalance(chainId, carolWallet.address)
+    const d_bal = await hasBalance(chainId, daveWallet.address)
+    if(!d_bal || !c_bal) {return }
+
+    const [cService, dService] = await connectSANodes();
+    const [r1Service, r2Service] = await connectRouterNodes();
+    //setup channels
+    await setupSANodesToRouter([cService,dService],r1Service.publicIdentifier)
+    await setupSANodesToRouter([cService,dService],r2Service.publicIdentifier)
+
+    const channel = await dService.getStateChannelByParticipants({publicIdentifier: dService.publicIdentifier, counterparty:r1Service.publicIdentifier, chainId:chainId})
+    const taransferAmt = utils.parseEther(".005");
+    const assetId = constants.AddressZero;
+    //****** C & D have funds in chan with R1 on id 5
+
+    // basicDeposit(cService,channel.getValue() || "");
+    //await basicDeposit(dService,channel.getValue()?.channelAddress)
+
+    // const reconcileDeposit = await dService.reconcileDeposit({
+    //     assetId,
+    //     channelAddress: channel.getValue()?.channelAddress || "",
+    //     publicIdentifier: dService.publicIdentifier
+    // })
+    // console.log(`Reconcile Deposit`, reconcileDeposit)
+
 
 
     // const restore = await cService.restoreState({publicIdentifier:cService.publicIdentifier, counterpartyIdentifier:routerPublicIdentifier, chainId:chainId})
@@ -89,87 +158,62 @@ async function main(){
     // console.log(drestore)
 
 
-    const cChannelExists = await cService.getStateChannelByParticipants({publicIdentifier: cService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
-    console.log(cChannelExists)
-    //
-    const dChannelExists = await dService.getStateChannelByParticipants({publicIdentifier: dService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
-    console.log(dChannelExists)
-    //
-    const depositAmt = utils.parseEther(".1");
-    const assetId = constants.AddressZero;
-
-    //
-    // const tx = await cService.sendDepositTx({
-    //     amount: depositAmt.toString(),
-    //     assetId,
-    //     chainId: 5,
-    //     channelAddress:  await restore.getValue().channelAddress,
-    //     publicIdentifier: cService.publicIdentifier,
-    // })
-
-
-    //******
-    // const tx = await dService.sendDepositTx({
-    //     amount: depositAmt.toString(),
-    //     assetId,
-    //     chainId: 5,
-    //     channelAddress:  await drestore.getValue()?.channelAddress,
-    //     publicIdentifier: dService.publicIdentifier,
-    // })
-    //
-    // console.log(tx)
-
     const preImage = getRandomBytes32();
     const lockHash = utils.soliditySha256(["bytes32"], [preImage]);
+    //
 
-    const taransferAmt = utils.parseEther(".05");
+    const chanAddress = channel.getValue()?.channelAddress || ""
 
-    const transferRes = await cService.conditionalTransfer({
+    const transferRes = await dService.conditionalTransfer({
         amount: taransferAmt.toString(),
         assetId: assetId,
-        channelAddress: await cChannelExists.getValue()?.channelAddress || "",
+        channelAddress: chanAddress,
         type: TransferNames.HashlockTransfer,
         details: {
             lockHash,
             expiry: "0",
         },
-        recipient: dService.publicIdentifier,
-        recipientChainId: 5
+        recipient: cService.publicIdentifier,
+        recipientChainId: 4
     })
-
+    //
     console.log(transferRes)
 
 
 
 
-
-    // const dChannelExists = await dService.getStateChannelByParticipants({publicIdentifier: dService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
-    // let cSetup;
-    // let dSetup
-    //
-    // //this can get the channel above cant hmm
-    // // const chanbyaddy = await cService.getStateChannel({channelAddress:"0xeae9aF6363Fa5a199ff516F5527834F7670f56ca"})
-    //
-    // //these return "Node not found"
-    // console.log(JSON.stringify(dChannelExists),JSON.stringify(cChannelExists))
     //
     //
-    // if(!cChannelExists.getError()){
-    //     //create chan.
-    //     cSetup = await cService.setup({
-    //         counterpartyIdentifier: routerPublicIdentifier,
-    //         chainId,
-    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
-    //     })
-    // }else if(!dChannelExists.getError()){
-    //     dSetup = await cService.setup({
-    //         counterpartyIdentifier: routerPublicIdentifier,
-    //         chainId,
-    //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
-    //     })
     //
-    // }
     //
+    //
+    // // const dChannelExists = await dService.getStateChannelByParticipants({publicIdentifier: dService.publicIdentifier, counterparty:routerPublicIdentifier, chainId:chainId})
+    // // let cSetup;
+    // // let dSetup
+    // //
+    // // //this can get the channel above cant hmm
+    // // // const chanbyaddy = await cService.getStateChannel({channelAddress:"0xeae9aF6363Fa5a199ff516F5527834F7670f56ca"})
+    // //
+    // // //these return "Node not found"
+    // // console.log(JSON.stringify(dChannelExists),JSON.stringify(cChannelExists))
+    // //
+    // //
+    // // if(!cChannelExists.getError()){
+    // //     //create chan.
+    // //     cSetup = await cService.setup({
+    // //         counterpartyIdentifier: routerPublicIdentifier,
+    // //         chainId,
+    // //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+    // //     })
+    // // }else if(!dChannelExists.getError()){
+    // //     dSetup = await cService.setup({
+    // //         counterpartyIdentifier: routerPublicIdentifier,
+    // //         chainId,
+    // //         timeout: DEFAULT_CHANNEL_TIMEOUT.toString(),
+    // //     })
+    // //
+    // // }
+    // //
 
 }
 main()

@@ -5,7 +5,7 @@
     "5": "https://goerli.infura.io/v3/af2f28bdb95d40edb06226a46106f5f9"
   },
   "logLevel": "info",
-  "natsUrl": "nats://18.117.154.133:4222",
-  "authUrl": "http://18.117.154.133:5040",
+  "natsUrl": "nats://172.23.0.3:4222",
+  "authUrl": "http://172.23.0.2:5040",
   "production": true
 }
