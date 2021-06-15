@@ -2,9 +2,10 @@ import { utils, constants, providers, BigNumber, Wallet} from "ethers";
 import {getRandomBytes32, RestServerNodeService} from "@connext/vector-utils";
 import {config} from "dotenv";
 import {resolve} from "path";
+import {daveEvts,carolEvts} from "./eventSetup";
 
 import pino from 'pino';
-import {DEFAULT_CHANNEL_TIMEOUT, TransferNames} from "@connext/vector-types";
+import {DEFAULT_CHANNEL_TIMEOUT, EngineEvents, TransferNames} from "@connext/vector-types";
 const logger = pino({ level: "debug" });
 
 const env = config({path:resolve("./docker/.env")})
@@ -51,13 +52,13 @@ async function connectSANodes(){
     const cService = await RestServerNodeService.connect(
         `${nodeUrlBase + carolPort}`,
         logger.child({ testName, name: "Carol" }),
-        undefined,
+        daveEvts,
         0
     );
     const dService = await RestServerNodeService.connect(
         `${'http://localhost:' + davePort}`,
         logger.child({ testName, name: "Dave" }),
-        undefined,
+        carolEvts,
         0
     )
 
@@ -158,12 +159,40 @@ async function main(){
     // console.log(drestore)
 
 
+    //register CService Listener for dave's transfer
     const preImage = getRandomBytes32();
     const lockHash = utils.soliditySha256(["bytes32"], [preImage]);
     //
 
     const chanAddress = channel.getValue()?.channelAddress || ""
 
+    let routedSuccessfully:string[] = [];
+
+    //register created transfer for dave
+    dService.on(
+        EngineEvents.CONDITIONAL_TRANSFER_CREATED,
+        (data) => {
+            console.log(`See Contitional Transfer ${JSON.stringify(data)}`)
+            routedSuccessfully.push(data.transfer.meta.routingId);
+        },
+        undefined,
+        dService.publicIdentifier,
+    );
+    //
+    let cancelled:string[] = [];
+
+    cService.on(
+        EngineEvents.CONDITIONAL_TRANSFER_CREATED,
+        (data) => {
+            console.log(`Carol Resolving transfer ${data}`)
+            cancelled.push(data.transfer.meta.routingId);
+        },
+        undefined,
+        cService.publicIdentifier,
+    );
+
+    //store routing id => preImage string.
+    //actually do transfer
     const transferRes = await dService.conditionalTransfer({
         amount: taransferAmt.toString(),
         assetId: assetId,
@@ -176,8 +205,22 @@ async function main(){
         recipient: cService.publicIdentifier,
         recipientChainId: 4
     })
-    //
+
+    const transferId = transferRes.getValue()?.transferId
     console.log(transferRes)
+    //
+    // const resolveRes = await cService.resolveTransfer({
+    //     publicIdentifier: cService.publicIdentifier,
+    //     channelAddress: chanAddress,
+    //     transferResolver: { preImage },
+    //     transferId,
+    // });
+    // console.log(transferRes);
+    // console.log(routedSuccessfully)
+    // console.log(cancelled)
+    ////////
+
+    // console.log(resolveRes)
 
 
 
