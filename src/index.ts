@@ -58,7 +58,7 @@ async function connectSANodes(){
     const dService = await RestServerNodeService.connect(
         `${'http://localhost:' + davePort}`,
         logger.child({ testName, name: "Dave" }),
-        carolEvts,
+        daveEvts,
         0
     )
 
@@ -184,7 +184,7 @@ async function main(){
     cService.on(
         EngineEvents.CONDITIONAL_TRANSFER_CREATED,
         (data) => {
-            console.log(`Carol Resolving transfer ${data}`)
+            console.log(`See Car Contitional Transfer ${JSON.stringify(data)}`)
             cancelled.push(data.transfer.meta.routingId);
         },
         undefined,
@@ -215,12 +215,13 @@ async function main(){
     //     transferResolver: { preImage },
     //     transferId,
     // });
-    // console.log(transferRes);
-    // console.log(routedSuccessfully)
-    // console.log(cancelled)
+    // console.log(resolveRes)
+    console.log(transferRes);
+    console.log(routedSuccessfully)
+    console.log(cancelled)
     ////////
 
-    // console.log(resolveRes)
+
 
 
 
